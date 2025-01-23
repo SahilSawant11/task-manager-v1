@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+
 type FilterProps = {
   onFilterChange: (filters: FilterState) => void
   categories: string[]
   teamLeads: string[]
   projects: string[]
+  assignedToOptions: string[]
+  reportedByOptions: string[]
 }
 
 type FilterState = {
@@ -15,11 +18,13 @@ type FilterState = {
   category: string
   teamLead: string
   project: string
+  assignedTo: string
+  reportedBy: string
   fromDate: string
   toDate: string
 }
 
-export function IssueFilter({ onFilterChange, categories, teamLeads, projects }: FilterProps) {
+export function IssueFilter({ onFilterChange, categories, teamLeads, projects, assignedToOptions, reportedByOptions }: FilterProps) {
   const [filters, setFilters] = useState<FilterState>({
     search: '',
     status: 'all',
@@ -27,6 +32,8 @@ export function IssueFilter({ onFilterChange, categories, teamLeads, projects }:
     category: 'all',
     teamLead: 'all',
     project: 'all',
+    assignedTo: 'all',
+    reportedBy: 'all',
     fromDate: '',
     toDate: '',
   })
@@ -106,17 +113,45 @@ export function IssueFilter({ onFilterChange, categories, teamLeads, projects }:
           ))}
         </SelectContent>
       </Select>
+      <Select onValueChange={(value) => handleFilterChange('assignedTo', value)}>
+        <SelectTrigger className="w-[120px]">
+          <SelectValue placeholder="Assigned To" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All</SelectItem>
+          {assignedToOptions.map((option) => (
+            <SelectItem key={option} value={option}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select onValueChange={(value) => handleFilterChange('reportedBy', value)}>
+        <SelectTrigger className="w-[120px]">
+          <SelectValue placeholder="Reported By" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All</SelectItem>
+          {reportedByOptions.map((option) => (
+            <SelectItem key={option} value={option}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       <Input
         type="date"
         value={filters.fromDate}
         onChange={(e) => handleFilterChange('fromDate', e.target.value)}
         className="w-auto"
+        placeholder="From Date"
       />
       <Input
         type="date"
         value={filters.toDate}
         onChange={(e) => handleFilterChange('toDate', e.target.value)}
         className="w-auto"
+        placeholder="To Date"
       />
     </div>
   )
