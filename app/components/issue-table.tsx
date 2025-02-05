@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useState, useEffect } from "react"
+import { Table, TableBody, TableCell, TableHead, TableRow, TableHeader } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -34,50 +34,78 @@ export default function IssueTable({ onIssuesUpdate }: IssueTableProps) {
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: "id", direction: "asc" })
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const fetchIssues = () => {
-      const storedIssues = localStorage.getItem("issues")
-      if (storedIssues) {
-        const parsedIssues = JSON.parse(storedIssues)
-        setIssues(parsedIssues)
-        setFilteredIssues(parsedIssues)
-      }
-    }
-
     fetchIssues()
-    const intervalId = setInterval(fetchIssues, 1000) // Fetch every second
-
-    return () => clearInterval(intervalId)
   }, [])
+
+  const fetchIssues = async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const response = await fetch("http://localhost:8080/api/issues")
+      if (!response.ok) {
+        throw new Error("Failed to fetch issues")
+      }
+      const data = await response.json()
+      setIssues(data)
+      setFilteredIssues(data)
+    } catch (error) {
+      console.error("Error fetching issues:", error)
+      setError("Failed to fetch issues. Please try again later.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const handleEdit = (id: number) => {
     setSelectedIssue(issues.find((issue) => issue.id === id) || null)
   }
 
-  const handleSave = (id: number, field: keyof Issue, value: string | string[]) => {
-    const updatedIssues = issues.map((issue) => {
-      if (issue.id === id) {
-        return { ...issue, [field]: value }
+  const handleSave = async (id: number, field: keyof Issue, value: string | string[]) => {
+    try {
+      const updatedIssue = { ...issues.find((issue) => issue.id === id), [field]: value }
+      const response = await fetch(`http://localhost:8080/api/issues/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(updatedIssue),
+      })
+      if (!response.ok) {
+        throw new Error("Failed to update issue")
       }
-      return issue
-    })
-    setIssues(updatedIssues)
-    onIssuesUpdate(updatedIssues)
-    setSelectedIssue((prev) => (prev ? { ...prev, [field]: value } : null))
-    localStorage.setItem("issues", JSON.stringify(updatedIssues))
-
-    // Dispatch a custom event to notify other components
-    window.dispatchEvent(new Event("issuesUpdated"))
+      const updatedIssueData = await response.json()
+      const updatedIssues = issues.map((issue) => (issue.id === id ? updatedIssueData : issue))
+      setIssues(updatedIssues)
+      setFilteredIssues(updatedIssues)
+      onIssuesUpdate(updatedIssues)
+      setSelectedIssue(updatedIssueData)
+    } catch (error) {
+      console.error("Error updating issue:", error)
+      setError("Failed to update issue. Please try again.")
+    }
   }
 
-  const handleDelete = (id: number) => {
-    const updatedIssues = issues.filter((issue) => issue.id !== id)
-    setIssues(updatedIssues)
-    onIssuesUpdate(updatedIssues)
-    setSelectedIssue(null)
-    localStorage.setItem("issues", JSON.stringify(updatedIssues))
-    window.dispatchEvent(new Event("issuesUpdated"))
+  const handleDelete = async (id: number) => {
+    try {
+      const response = await fetch(`http://localhost:8080/api/issues/${id}`, {
+        method: "DELETE",
+      })
+      if (!response.ok) {
+        throw new Error("Failed to delete issue")
+      }
+      const updatedIssues = issues.filter((issue) => issue.id !== id)
+      setIssues(updatedIssues)
+      setFilteredIssues(updatedIssues)
+      onIssuesUpdate(updatedIssues)
+      setSelectedIssue(null)
+    } catch (error) {
+      console.error("Error deleting issue:", error)
+      setError("Failed to delete issue. Please try again.")
+    }
   }
 
   const handleSort = (key: keyof Issue) => {
@@ -104,21 +132,35 @@ export default function IssueTable({ onIssuesUpdate }: IssueTableProps) {
     setFilteredIssues(filtered)
   }
 
-  const handleAddComment = (issueId: number, content: string) => {
-    const updatedIssues = issues.map((issue) => {
-      if (issue.id === issueId) {
-        const newComment = {
-          id: issue.comments.length + 1,
-          author: "Current User", // Replace with actual user name
-          content,
-          createdAt: new Date().toISOString(),
-        }
-        return { ...issue, comments: [...issue.comments, newComment] }
+  const handleAddComment = async (issueId: number, content: string) => {
+    try {
+      const response = await fetch(`http://localhost:8080/api/comments`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ issueId, content }),
+      })
+      if (!response.ok) {
+        throw new Error("Failed to add comment")
       }
-      return issue
-    })
-    setIssues(updatedIssues)
-    onIssuesUpdate(updatedIssues)
+      const newComment = await response.json()
+      const updatedIssues = issues.map((issue) => {
+        if (issue.id === issueId) {
+          return { ...issue, comments: [...issue.comments, newComment] }
+        }
+        return issue
+      })
+      setIssues(updatedIssues)
+      setFilteredIssues(updatedIssues)
+      onIssuesUpdate(updatedIssues)
+      if (selectedIssue && selectedIssue.id === issueId) {
+        setSelectedIssue({ ...selectedIssue, comments: [...selectedIssue.comments, newComment] })
+      }
+    } catch (error) {
+      console.error("Error adding comment:", error)
+      setError("Failed to add comment. Please try again.")
+    }
   }
 
   const sortedIssues = [...filteredIssues].sort((a, b) => {
@@ -135,7 +177,7 @@ export default function IssueTable({ onIssuesUpdate }: IssueTableProps) {
     devNote: "",
     category: "",
     teamLead: "",
-    date: new Date().toISOString().split("T")[0], // Set default date to today
+    date: new Date().toISOString().split("T")[0],
     attachments: [],
     comments: [],
     project: "",
@@ -148,29 +190,44 @@ export default function IssueTable({ onIssuesUpdate }: IssueTableProps) {
     setNewIssue((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleNewIssueSubmit = () => {
-    const id = Math.max(...issues.map((i) => i.id), 0) + 1
-    const updatedIssues = [...issues, { id, ...newIssue }]
-    setIssues(updatedIssues)
-    onIssuesUpdate(updatedIssues)
-    setNewIssue({
-      description: "",
-      status: "",
-      priority: "",
-      assignedTo: "",
-      devNote: "",
-      category: "",
-      teamLead: "",
-      date: new Date().toISOString().split("T")[0], // Set default date to today
-      attachments: [],
-      comments: [],
-      project: "",
-      example: "",
-      reportedBy: "",
-      resolutionDate: "",
-    })
-    setIsDialogOpen(false)
-    window.dispatchEvent(new Event("issuesUpdated"))
+  const handleNewIssueSubmit = async () => {
+    try {
+      const response = await fetch("http://localhost:8080/api/issues", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(newIssue),
+      })
+      if (!response.ok) {
+        throw new Error("Failed to create issue")
+      }
+      const createdIssue = await response.json()
+      const updatedIssues = [...issues, createdIssue]
+      setIssues(updatedIssues)
+      setFilteredIssues(updatedIssues)
+      onIssuesUpdate(updatedIssues)
+      setNewIssue({
+        description: "",
+        status: "",
+        priority: "",
+        assignedTo: "",
+        devNote: "",
+        category: "",
+        teamLead: "",
+        date: new Date().toISOString().split("T")[0],
+        attachments: [],
+        comments: [],
+        project: "",
+        example: "",
+        reportedBy: "",
+        resolutionDate: "",
+      })
+      setIsDialogOpen(false)
+    } catch (error) {
+      console.error("Error creating issue:", error)
+      setError("Failed to create issue. Please try again.")
+    }
   }
 
   const exportToExcel = () => {
@@ -178,6 +235,14 @@ export default function IssueTable({ onIssuesUpdate }: IssueTableProps) {
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, "Issues")
     XLSX.writeFile(workbook, "issues.xlsx")
+  }
+
+  if (isLoading) {
+    return <div>Loading issues...</div>
+  }
+
+  if (error) {
+    return <div>Error: {error}</div>
   }
 
   return (
@@ -377,8 +442,8 @@ export default function IssueTable({ onIssuesUpdate }: IssueTableProps) {
                       issue.priority.toLowerCase() === "high"
                         ? "destructive"
                         : issue.priority.toLowerCase() === "medium"
-                          ? "secondary"
-                          : "default"
+                          ? "warning"
+                          : "success"
                     }
                   >
                     {issue.priority}
@@ -413,6 +478,7 @@ export default function IssueTable({ onIssuesUpdate }: IssueTableProps) {
               <div>
                 <Label htmlFor="status">Status</Label>
                 <Select
+                  id="status"
                   value={selectedIssue.status}
                   onValueChange={(value) => handleSave(selectedIssue.id, "status", value)}
                 >
@@ -429,6 +495,7 @@ export default function IssueTable({ onIssuesUpdate }: IssueTableProps) {
               <div>
                 <Label htmlFor="priority">Priority</Label>
                 <Select
+                  id="priority"
                   value={selectedIssue.priority}
                   onValueChange={(value) => handleSave(selectedIssue.id, "priority", value)}
                 >
@@ -461,6 +528,7 @@ export default function IssueTable({ onIssuesUpdate }: IssueTableProps) {
               <div>
                 <Label htmlFor="reportedBy">Reported By</Label>
                 <Select
+                  id="reportedBy"
                   value={selectedIssue.reportedBy}
                   onValueChange={(value) => handleSave(selectedIssue.id, "reportedBy", value)}
                 >
@@ -479,6 +547,7 @@ export default function IssueTable({ onIssuesUpdate }: IssueTableProps) {
               <div>
                 <Label htmlFor="assignedTo">Assigned To</Label>
                 <Select
+                  id="assignedTo"
                   value={selectedIssue.assignedTo}
                   onValueChange={(value) => handleSave(selectedIssue.id, "assignedTo", value)}
                 >
@@ -497,6 +566,7 @@ export default function IssueTable({ onIssuesUpdate }: IssueTableProps) {
               <div>
                 <Label htmlFor="category">Category</Label>
                 <Select
+                  id="category"
                   value={selectedIssue.category}
                   onValueChange={(value) => handleSave(selectedIssue.id, "category", value)}
                 >
@@ -515,6 +585,7 @@ export default function IssueTable({ onIssuesUpdate }: IssueTableProps) {
               <div>
                 <Label htmlFor="teamLead">Team Lead</Label>
                 <Select
+                  id="teamLead"
                   value={selectedIssue.teamLead}
                   onValueChange={(value) => handleSave(selectedIssue.id, "teamLead", value)}
                 >
@@ -542,6 +613,7 @@ export default function IssueTable({ onIssuesUpdate }: IssueTableProps) {
               <div>
                 <Label htmlFor="project">Project</Label>
                 <Select
+                  id="project"
                   value={selectedIssue.project}
                   onValueChange={(value) => handleSave(selectedIssue.id, "project", value)}
                 >
